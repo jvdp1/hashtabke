@@ -3,15 +3,22 @@ module modhash
  use iso_fortran_env, only: int32, real32, real64
  implicit none
  private
- public :: hash, roundinguppower2
+ public :: hash, hash2, roundinguppower2
 
  integer(int32), parameter, public :: seed_hash = 305419896_int32
 
  interface hash
   #:for t,k,l in NTYPES
-   module procedure hashword_${k}$
+  module procedure hashword_${k}$
   #:endfor
   module procedure hashword_char, hashword_int32_scal, hashword_real32_scal
+ end interface
+
+ interface hash2
+  #:for t,k,l in NTYPES
+  module procedure hashword2_${k}$
+  #:endfor
+  module procedure hashword2_char, hashword2_int32_scal, hashword2_real32_scal
  end interface
 
 contains
@@ -41,10 +48,9 @@ contains
   end if
  end function
 
-
  !Fortran hash function based on the function `hashword` in [lookup3.c](http://burtleburtle.net/bob/c/lookup3.c)
  #:for t,k,l in NTYPES
- pure function hashword_${k}$(k, seed) result(c)
+ pure function hashword_${k}$ (k, seed) result(c)
   ${t}$, intent(in) :: k(:)
   integer(kind=int32), intent(in), optional :: seed
 
@@ -104,6 +110,7 @@ contains
    b = b + k(pos + 1)
    c = c + k(pos + 2)
    #:endif
+  case default
   end select
 
   call final(a, b, c)
@@ -145,6 +152,123 @@ contains
    c = hash(kint32)
   end if
  end function
+
+
+ pure subroutine hashword2_char(k, pc, pb)
+  character(len=*), intent(in) :: k
+  integer(int32), intent(inout) :: pc, pb
+
+  integer(int32) :: modlength, lenk, length
+  integer(int32), allocatable :: kint32(:)
+
+  lenk = len_trim(k)
+  modlength = int(lenk/4_int32)
+
+  length = modlength
+  if (mod(lenk, 4) .ne. 0) length = length + 1
+
+  allocate (kint32(length))
+
+  kint32 = transfer(k(1:lenk)//repeat(' ', length*4 - lenk), kint32)
+
+  call hash2(kint32, pc, pb)
+
+ end subroutine
+
+#:for t,k,l in NTYPES
+ pure subroutine hashword2_${k}$ (k, pc, pb)
+  ${t}$, intent(in) :: k(:)
+  integer(kind=int32), intent(inout) :: pc
+  integer(kind=int32), intent(inout) :: pb
+
+  integer(kind=int32) :: length
+  integer(kind=int32) :: a, b, c
+  integer(kind=int32) :: pos
+
+  length = size(k)
+
+  a = ishft(length, 2) + pc
+  b = a
+  c = a + pb
+
+  pos = 1
+  do while (length > 3)
+   #:if k[0] == 'r'
+   a = a + transfer(k(pos), a)
+   b = b + transfer(k(pos + 1), b)
+   c = c + transfer(k(pos + 2), c)
+   #:else
+   a = a + k(pos)
+   b = b + k(pos + 1)
+   c = c + k(pos + 2)
+   #:endif
+   call mix(a, b, c)
+   length = length - 3
+   pos = pos + 3
+  end do
+
+  select case (length)
+  case (1)
+   #:if k[0] == 'r'
+   a = a + transfer(k(pos), a)
+   #:else
+   a = a + k(pos)
+   #:endif
+  case (2)
+   #:if k[0] == 'r'
+   a = a + transfer(k(pos), a)
+   b = b + transfer(k(pos + 1), b)
+   #:else
+   a = a + k(pos)
+   b = b + k(pos + 1)
+   #:endif
+  case (3)
+   #:if k[0] == 'r'
+   a = a + transfer(k(pos), a)
+   b = b + transfer(k(pos + 1), b)
+   c = c + transfer(k(pos + 2), c)
+   #:else
+   a = a + k(pos)
+   b = b + k(pos + 1)
+   c = c + k(pos + 2)
+   #:endif
+  case default
+  end select
+
+  call final(a, b, c)
+
+  pc = c
+  pb = b
+
+ end subroutine
+#:endfor
+
+ pure subroutine hashword2_int32_scal(k, pc, pb)
+  integer(int32), intent(in) :: k
+  integer(int32), intent(inout) :: pc, pb
+
+  integer(int32) :: kint32(3)
+
+  kint32(1) = k
+  kint32(2) = 11
+  kint32(3) = seed_hash
+
+  call hash2(kint32, pc, pb)
+
+ end subroutine
+
+ pure subroutine hashword2_real32_scal(k, pc, pb)
+  real(real32), intent(in) :: k
+  integer(int32), intent(inout) :: pc, pb
+
+  integer(int32), allocatable :: kint32(:)
+
+  allocate (kint32(1))
+  kint32(1) = transfer(k, kint32(1))
+
+  call hash2(kint32, pc, pb)
+
+ end subroutine
 
  elemental pure function roundinguppower2(x) result(next)
   integer(kind=int32), intent(in)::x

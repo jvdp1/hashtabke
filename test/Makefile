@@ -1,4 +1,4 @@
-PROGS_SRC = test_hash.f90 test_table.f90 #test_list.f90
+PROGS_SRC = test_hash.f90 test_hash2.f90 test_table.f90 #test_list.f90
 
 NAME = hashtable
 
@@ -19,7 +19,7 @@ $(TESTPROGS):
 	./$(@:TEST=)
 
 clean:
-	$(RM) $(PROGS) $(OBJS) $(CLEAN_FILES)
+	$(RM) $(PROGS) $(OBJS) $(CLEAN_FILES) table_*
 
 %.o: %.f90
 	$(FC) $(FFLAGS) $(CPPFLAGS) -c $<
